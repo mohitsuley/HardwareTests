@@ -45,6 +45,7 @@ void loop(void)
   uint8_t Data1, Data2, Data3, Data4 = 0;
   char txBuffer[32]= "";
   char temp[5];
+  usigned long send_time, rtt = 0;
   
   sprintf(txBuffer,"%2X", nodeID);
   strcat(txBuffer,",");
@@ -54,86 +55,46 @@ void loop(void)
   sprintf(temp,"%03d",Data1);
   strcat(txBuffer,temp);
   
+  printf("txBuffer: %s len: %d\n\r",txBuffer, strlen(txBuffer));
 
-
-  //
-  // Ping out role.  Repeatedly send the current time
-  //
-
-  if (role == role_ping_out)
+  radio.stopListening();
+  
+  if(radio.write(txBuffer, strlen(txBuffer))) 
   {
-    // First, stop listening so we can talk.
-    radio.stopListening();
-
-    // Take the time, and send it.  This will block until complete
-    unsigned long time = millis();
-    printf("Now sending %l",time);
-    bool ok = radio.write( &time, sizeof(unsigned long) );
+    printf("Send successful\n\r"); 
+  }
+  else
+  {
+    printf("Send failed\n\r");
+  }
+  
+  radio.startListening();
+  delay(20);
+  
+  send_time = millis();
+  
+  while (radio.available() && !timeout)
+  {
+    uint8_t len = radio.getDynamicPayloadSize();
+    radio.read( receivePayload, len); 
+         
+    receivePayload[len] = 0;
+    printf("rxBuffer:  %s\n\r",receivePayload);
     
-    if (ok)
-      printf("ok...");
-    else
-      printf("failed.\n\r");
-
-    // Now, continue listening
-    radio.startListening();
-
-    // Wait here until we get a response, or timeout (250ms)
-    unsigned long started_waiting_at = millis();
-    bool timeout = false;
-    while ( ! radio.available() && ! timeout )
-      if (millis() - started_waiting_at > 1+(radio.getMaxTimeout()/1000) )
-        timeout = true;
-
-    // Describe the results
-    if ( timeout )
+    if ( ! strcmp(txBuffer, receivePayload) ) 
     {
-      printf("Failed, response timed out.\n\r");
-      printf("Timeout duration: %d\n\r", (1+radio.getMaxTimeout()/1000) ) ;
+      rtt = millis() - send_time;
+      printf("inBuffer --> rtt: %i \n\r",rtt);      
     }
-    else
+    
+    if ( millis() - send_time > radio.getMaxTimeout() ) 
     {
-      // Grab the response, compare, and send to debugging spew
-      unsigned long got_time;
-      radio.read( &got_time, sizeof(unsigned long) );
-
-      // Spew it
-      printf("Got response %lu, round-trip delay: %lu\n\r",got_time,millis()-got_time);
+         Serial.println("Timeout!!!");
+         timeout = 1;
     }
 
-    // Try again 1s later
-    delay(1000);
+    delay(10);  
   }
-
-  //
-  // Pong back role.  Receive each packet, dump it out, and send it back
-  //
-
-  if ( role == role_pong_back )
-  {
-    // if there is data ready
-    if ( radio.available() )
-    {
-      // Dump the payloads until we've gotten everything
-      unsigned long got_time;
-      bool done = false;
-      while (!done)
-      {
-        // Fetch the payload, and see if this was the last one.
-        done = radio.read( &got_time, sizeof(unsigned long) );
-      }
-
-      // First, stop listening so we can talk
-      radio.stopListening();
-
-      // Send the final one back. This way, we don't delay
-      // the reply while we wait on serial i/o.
-      radio.write( &got_time, sizeof(unsigned long) );
-      printf("Sent response %lu\n\r", got_time);
-
-      // Now, resume listening so we catch the next packets.
-      radio.startListening();
-    }
-  }
+  
+  delay(250);
 }
-// vim:cin:ai:sts=2 sw=2 ft=cpp
