@@ -1,16 +1,17 @@
-#include <SPI.h>
+#include <nRF24L01.h>
 #include <RF24.h>
+#include <RF24_config.h>
+#include <SPI.h>
 #include "printf.h"
 
 RF24 radio(9,10);
 
-// For best performance, use P1-P5 for writing and Pipe0 for reading as per the hub setting
-// Below is the settings from the hub/receiver listening to P0 to P5
-//const uint64_t pipes[6] = { 0x7365727631LL, 0xF0F0F0F0E1LL, 0xF0F0F0F0E2LL, 0xF0F0F0F0E3LL, 0xF0F0F0F0E4LL, 0xF0F0F0F0E5LL };
+// All pipes to be used by sensors here 
+// P0 - Hub Pipe for writing. Read by all sensors
+// P1-P5 - Sensor pipes for writing by sensors. Hub reads on these. 
 
-// Pipes are unique per slave unit. 
-const uint64_t pipes[2] = { 0xF0F0F0F0E1LL, 0x7365727631LL };
-
+// P0 is Hub Pipe to be read by sensors. P1 is specific sensor pipe; to be opened for writing. 
+const uint64_t pipes[2] = { 0x7365727631LL, 0xF0F0F0F0E1LL };
 char receivePayload[32];
 uint8_t counter=0;
 
@@ -20,8 +21,7 @@ void setup(void)
   Serial.begin(57600);
   printf_begin();
   printf("\n\r Hall Effect Slave");
-  //printf("ROLE: %s\n\r",role_friendly_name[role]);
-
+  
   radio.begin();
   radio.enableDynamicPayloads() ;
 
@@ -30,8 +30,8 @@ void setup(void)
   radio.setChannel(76);
   radio.setRetries(15,15);
 
-  radio.openWritingPipe(pipes[0]); 
-  radio.openReadingPipe(1,pipes[1]); 
+  radio.openReadingPipe(0,pipes[0]); 
+  radio.openWritingPipe(pipes[1]); 
   
   radio.setAutoAck( true ) ;
   radio.printDetails();
